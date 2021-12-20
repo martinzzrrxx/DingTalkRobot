@@ -13,6 +13,7 @@ namespace DingTalkRobot {
     private static string m_MarkdownMsg   = "";
     private static string m_Json          = "";
     private static string m_NReport       = "";
+    private static string m_RobotName     = "";
     private static string[] m_Ats         = new string[0];
     private static Dictionary<string, string> m_ProdOwners = new Dictionary<string, string>();
 
@@ -67,13 +68,18 @@ namespace DingTalkRobot {
       if (m_TextMsg.Length == 0 && m_MarkdownMsg.Length == 0 && m_Json.Length == 0 && m_NReport.Length == 0) 
         throw new Exception("Markdown/Text/Json/NReport is required");
 
-
       DingTalkRobot robot = new DingTalkRobot(m_WebHookURL, m_SecretKey);
       if (m_NReport.Length > 0) {
         try {
           List<string> msgs = FormatNSoftwareReport(m_NReport);
-          for (i = 0; i < msgs.Count; i+=2) {
-            robot.SendText(msgs[i] + "\n\n" + msgs[i+1], new string[] { GetProdOwner(msgs[i]), "15399015948" });
+          String prodVersion = msgs[0];
+          for (i = 1; i < msgs.Count; i+=2) {
+            robot.SendText(
+              (prodVersion.Length > 0 ? "[" + prodVersion + "] " : "") +
+              (m_RobotName.Length > 0 ? "[" + m_RobotName + "] " : "") +
+              msgs[i] + "\n\n" + msgs[i+1], 
+              new string[] { GetProdOwner(msgs[i]), "15399015948" }
+            );
           }
         } catch (Exception ex) {
           Console.WriteLine("Failed to send NReport: " + ex.Message);
@@ -118,6 +124,9 @@ namespace DingTalkRobot {
             case "SECRETKEY":
               m_SecretKey = val;
               break;
+            case "ROBOTNAME":
+              m_RobotName = val;
+              break;
             default:
               if (IsPhoneNum(key)) {
                 String[] vals = val.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
@@ -157,8 +166,17 @@ namespace DingTalkRobot {
     private static List<String> FormatNSoftwareReport(String m) {
       if (File.Exists(m)) m = File.ReadAllText(m);
       List<String> ret = new List<string>();
+
+      int posEnd = m.IndexOf("</h2>"); //<h2>nsoftware - v20</h2
+      if (posEnd > 0) {
+        int startPos = posEnd;
+        while (startPos - 1 > 0 && m[startPos - 1] != ' ') startPos--;
+        ret.Add(m.Substring(startPos, 3));
+      } else {
+        ret.Add("vXX");
+      }
       int pos = m.IndexOf("<table");
-      int posEnd = m.IndexOf(("</table>"));
+      posEnd = m.IndexOf(("</table>"));
       while (pos < posEnd) {
         int rowStart = m.IndexOf("<tr>", pos);
         int rowEnd = m.IndexOf("</tr>", pos);
@@ -171,8 +189,11 @@ namespace DingTalkRobot {
         cols[0] = RemoveTag(cols[0]);
         cols[1] = RemoveTag(cols[1].Replace("<br>", "\n"));
         cols[1] = cols[1].Replace("\r\n", "\n");
-        pos = cols[1].IndexOf("Microsoft (R) Program");
-        if (pos > 0) cols[1] = cols[1].Substring(pos);
+        int pos2 = cols[1].IndexOf("Microsoft (R) Program");
+        if (pos2 > 0) {
+          pos = pos2;
+          cols[1] = cols[1].Substring(pos);
+        }
         while (cols[1].Contains("\n\n")) {
           cols[1] = cols[1].Replace("\n\n", "\n");
         }
