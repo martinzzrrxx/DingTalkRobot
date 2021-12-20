@@ -78,7 +78,7 @@ namespace DingTalkRobot {
               (prodVersion.Length > 0 ? "[" + prodVersion + "] " : "") +
               (m_RobotName.Length > 0 ? "[" + m_RobotName + "] " : "") +
               msgs[i] + "\n\n" + msgs[i+1], 
-              new string[] { GetProdOwner(msgs[i]), "15399015948" }
+              new string[] { GetProdOwner(msgs[i]) }
             );
           }
         } catch (Exception ex) {
@@ -112,6 +112,9 @@ namespace DingTalkRobot {
 
       string[] lines = File.ReadAllLines(file);
       for (int i = 0; i < lines.Length; i++) {
+        if (lines[i].Trim().Length == 0) continue;
+        if (lines[i].StartsWith(";")) continue;
+
         if (lines[i].Contains("=")) {
           int pos = lines[i].IndexOf("=");
           string key = lines[i].Substring(0, pos).Trim();
@@ -214,9 +217,13 @@ namespace DingTalkRobot {
     }
 
     private static String GetProdOwner(String prod) {
-      int pos = prod.IndexOf("[");
-      string prodName = prod.Substring(0, pos).Trim();
-      return m_ProdOwners[prodName];
+      try {
+        int pos = prod.IndexOf("[");
+        string prodName = prod.Substring(0, pos).Trim();
+        return m_ProdOwners[prodName];
+      } catch (Exception ex) { }
+
+      return "15399015948";
     }
   }
 }
