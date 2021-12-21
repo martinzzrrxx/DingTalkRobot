@@ -71,15 +71,17 @@ namespace DingTalkRobot {
       DingTalkRobot robot = new DingTalkRobot(m_WebHookURL, m_SecretKey);
       if (m_NReport.Length > 0) {
         try {
-          List<string> msgs = FormatNSoftwareReport(m_NReport);
-          String prodVersion = msgs[0];
-          for (i = 1; i < msgs.Count; i+=2) {
-            robot.SendText(
-              (prodVersion.Length > 0 ? "[" + prodVersion + "] " : "") +
-              (m_RobotName.Length > 0 ? "[" + m_RobotName + "] " : "") +
-              msgs[i] + "\n\n" + msgs[i+1], 
-              new string[] { GetProdOwner(msgs[i]) }
-            );
+          Dictionary<string, List<string>> reports = ParseNSoftReports(m_NReport);
+          foreach (KeyValuePair<string, List<string>> report in reports) {
+            string version = report.Key;
+            List<string> msgs = report.Value;
+            for (i = 0; i < msgs.Count; i += 2) {
+              robot.SendText("[" + version + "] " + (m_RobotName.Length > 0 ? "[" + m_RobotName + "] " : "") +
+                msgs[i] + "\n\n" + msgs[i + 1],
+                new string[] { GetProdOwner(msgs[i]) }
+              );
+            }
+
           }
         } catch (Exception ex) {
           Console.WriteLine("Failed to send NReport: " + ex.Message);
@@ -166,46 +168,57 @@ namespace DingTalkRobot {
       m_Ats = ret.ToArray();
     }
     
-    private static List<String> FormatNSoftwareReport(String m) {
+
+    private static Dictionary<String, List<string>> ParseNSoftReports(String m) {
+      Dictionary<String, List<string>> reports = new Dictionary<string, List<string>>();
+
       if (File.Exists(m)) m = File.ReadAllText(m);
-      List<String> ret = new List<string>();
 
-      int posEnd = m.IndexOf("</h2>"); //<h2>nsoftware - v20</h2
-      if (posEnd > 0) {
-        int startPos = posEnd;
+      int pos = 0;
+      pos = m.IndexOf("</h2>", pos); //<h2>nsoftware - v20</h2>
+      while (pos > 0) {
+
+        int startPos = pos;
         while (startPos - 1 > 0 && m[startPos - 1] != ' ') startPos--;
-        ret.Add(m.Substring(startPos, 3));
-      } else {
-        ret.Add("vXX");
-      }
-      int pos = m.IndexOf("<table");
-      posEnd = m.IndexOf(("</table>"));
-      while (pos < posEnd) {
-        int rowStart = m.IndexOf("<tr>", pos);
-        int rowEnd = m.IndexOf("</tr>", pos);
-        pos = rowEnd + "</tr>".Length;
+        string version = m.Substring(startPos, 3).Trim();
 
-        String rowStr = m.Substring(rowStart + "<tr>".Length, rowEnd - rowStart - "<tr>".Length);
-        rowStr = rowStr.Replace("</td>", "");
-        String[] cols = rowStr.Split(new string[] { "<td>" }, StringSplitOptions.RemoveEmptyEntries);
-        if (cols.Length != 2 || cols[1].Equals("Success!")) continue;
-        cols[0] = RemoveTag(cols[0]);
-        cols[1] = RemoveTag(cols[1].Replace("<br>", "\n"));
-        cols[1] = cols[1].Replace("\r\n", "\n");
-        int pos2 = cols[1].IndexOf("Microsoft (R) Program");
-        if (pos2 > 0) {
-          pos = pos2;
-          cols[1] = cols[1].Substring(pos);
+        List<string> ret = new List<string>();
+        pos = m.IndexOf("<table", pos);
+        int posEnd = m.IndexOf("</table>", pos);
+        while (pos < posEnd) {
+          int rowStart = m.IndexOf("<tr>", pos);
+          int rowEnd = m.IndexOf("</tr>", pos);
+          pos = rowEnd + "</tr>".Length;
+
+          string rowStr = m.Substring(rowStart + "<tr>".Length, rowEnd - rowStart - "<tr>".Length);
+          rowStr = rowStr.Replace("</td>", "");
+          string[] cols = rowStr.Split(new string[] { "<td>" }, StringSplitOptions.RemoveEmptyEntries);
+          if (cols.Length != 2 || cols[1].Equals("Success!")) continue;
+          cols[0] = RemoveTag(cols[0]);
+          cols[1] = RemoveTag(cols[1].Replace("<br>", "\n"));
+          cols[1] = cols[1].Replace("\r\n", "\n");
+          int pos2 = cols[1].IndexOf("Microsoft (R) Program");
+          if (pos2 > 0) {
+            cols[1] = cols[1].Substring(pos2);
+          }
+          while (cols[1].Contains("\n\n")) {
+            cols[1] = cols[1].Replace("\n\n", "\n");
+          }
+          cols[1] = cols[1].Replace("\\", "\\\\").Replace("\"", "\\\"");
+          ret.AddRange(cols);
         }
-        while (cols[1].Contains("\n\n")) {
-          cols[1] = cols[1].Replace("\n\n", "\n");
+
+        if (ret.Count > 0) {
+          reports.Add(version, ret);
         }
-        cols[1] = cols[1].Replace("\\", "\\\\").Replace("\"", "\\\"");
-        ret.AddRange(cols);
+
+        pos = m.IndexOf("</h2>", pos); //<h2>nsoftware - v20</h2>
       }
-      return ret;
+
+      return reports;
     }
-    private static String RemoveTag(String input) {
+
+    private static string RemoveTag(string input) {
       StringBuilder sb = new StringBuilder();
       bool inTag = false;
       for (int i = 0; i < input.Length; i++) {
@@ -216,7 +229,7 @@ namespace DingTalkRobot {
       return sb.ToString();
     }
 
-    private static String GetProdOwner(String prod) {
+    private static string GetProdOwner(string prod) {
       try {
         int pos = prod.IndexOf("[");
         string prodName = prod.Substring(0, pos).Trim();
